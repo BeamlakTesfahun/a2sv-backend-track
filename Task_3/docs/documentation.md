@@ -120,3 +120,55 @@ Errors are returned to the controller and printed to the user.
 -   Add user roles (admin vs member)
 
 ---
+
+## 7. Concurrency & Reservations
+
+The system has been extended to support concurrent book reservations using:
+
+-   Goroutines
+-   Channels
+-   Mutexes (`sync.Mutex`)
+-   Timers (`time.Sleep`)
+
+### Reservation Flow
+
+1. The `LibraryManager` interface now includes:
+
+    - `ReserveBook(bookID int, memberID int) error`
+
+2. The `Library` struct uses:
+
+    - `sync.Mutex` to guard shared state
+    - `map[int]Book` for books
+    - `map[int]Member` for members
+    - `map[int]int` for active reservations (`bookID -> memberID`)
+
+3. When `ReserveBook` is called:
+    - If the book is **available**, it is marked as `"Reserved"` for the given member.
+    - If the book is already **reserved** or **borrowed**, an error is returned.
+    - A goroutine starts a **5-second timer**. If the book is still reserved for the same member after 5 seconds and has not been borrowed, the reservation is **automatically cancelled** and the status returns to `"Available"`.
+
+### ReservationWorker
+
+The `concurrency/reservation_worker.go` file defines:
+
+-   `ReservationWorker`, which owns a `Requests` channel.
+-   `ReservationRequest`, which includes:
+    -   `BookID`
+    -   `MemberID`
+    -   `ResultChan` (channel used to send back the error result)
+
+The worker:
+
+-   Listens on the `Requests` channel.
+-   For each request, starts a goroutine that calls `Library.ReserveBook`.
+-   Sends the result (error or nil) back on `ResultChan`.
+
+### Using the Worker
+
+The controller:
+
+-   Calls `worker.SubmitReservation(bookID, memberID)` to enqueue a new reservation.
+-   Waits on the returned channel for the result.
+
+A menu option also demonstrates **simulated concurrent reservations**, where multiple members try to reserve the same book at the same time. The `sync.Mutex` in `Library` ensures data consistency, and double reservations are prevented.

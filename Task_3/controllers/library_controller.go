@@ -7,27 +7,30 @@ import (
 	"strconv"
 	"strings"
 
+	"library_management/concurrency"
 	"library_management/models"
 	"library_management/services"
 )
 
 type LibraryController struct {
 	service *services.Library
+	worker  *concurrency.ReservationWorker
 	reader  *bufio.Reader
 }
 
-func NewLibraryController() *LibraryController {
-	lib := services.NewLibrary()
-
-	// seed (member + book)
-	_ = lib.AddMember(models.Member{ID: 1, Name: "Default Member"})
-	lib.AddBook(models.Book{ID: 1, Title: "Go Programming", Author: "Alan A. A. Donovan"})
-	lib.AddBook(models.Book{ID: 2, Title: "The Pragmatic Programmer", Author: "Andrew Hunt"})
-
+func NewLibraryController(lib *services.Library, worker *concurrency.ReservationWorker) *LibraryController {
 	return &LibraryController{
 		service: lib,
+		worker:  worker,
 		reader:  bufio.NewReader(os.Stdin),
 	}
+}
+
+func (lc *LibraryController) SeedData() {
+	// seed (member + book)
+	_ = lc.service.AddMember(models.Member{ID: 1, Name: "Default Member"})
+	lc.service.AddBook(models.Book{ID: 1, Title: "Go Programming", Author: "Alan A. A. Donovan"})
+	lc.service.AddBook(models.Book{ID: 2, Title: "The Pragmatic Programmer", Author: "Andrew Hunt"})
 }
 
 func (lc *LibraryController) Run() {
@@ -51,6 +54,10 @@ func (lc *LibraryController) Run() {
 		case 7:
 			lc.handleAddMember()
 		case 8:
+			lc.handleReserveBook()
+		case 9:
+			lc.handleSimulateConcurrentReservations()
+		case 10:
 			fmt.Println("Exiting... Goodbye!")
 			return
 		default:
@@ -70,7 +77,9 @@ func (lc *LibraryController) printMenu() {
 	fmt.Println("5. List all available books")
 	fmt.Println("6. List all borrowed books by a member")
 	fmt.Println("7. Add a new member")
-	fmt.Println("8. Exit")
+	fmt.Println("8. Reserve a book (concurrent)")
+	fmt.Println("9. Simulate concurrent reservations")
+	fmt.Println("10. Exit")
 	fmt.Println("========================================")
 }
 
@@ -177,6 +186,31 @@ func (lc *LibraryController) handleAddMember() {
 	}
 
 	fmt.Println("Member added successfully!")
+}
+
+func (lc *LibraryController) handleReserveBook() {
+	fmt.Println("---- Reserve Book (Concurrent) ----")
+	bookID := lc.readInt("Enter book ID: ")
+	memberID := lc.readInt("Enter member ID: ")
+
+	errChan := lc.worker.SubmitReservation(bookID, memberID)
+	err := <-errChan
+
+	if err != nil {
+		fmt.Println("Error reserving book:", err)
+		return
+	}
+
+	fmt.Println("Reservation request processed successfully!")
+}
+
+func (lc *LibraryController) handleSimulateConcurrentReservations() {
+	fmt.Println("---- Simulate Concurrent Reservations ----")
+	bookID := lc.readInt("Enter book ID for simulation: ")
+
+	memberIDs := []int{1, 2, 3, 4, 5}
+	fmt.Printf("Simulating members %v trying to reserve book %d at the same time...\n", memberIDs, bookID)
+	lc.worker.SimulateConcurrentReservations(bookID, memberIDs)
 }
 
 // input helpers
