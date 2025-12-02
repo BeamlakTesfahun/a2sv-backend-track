@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"task_manager/data"
@@ -20,7 +19,14 @@ func NewTaskController(service *data.TaskService) *TaskController {
 
 // GET /tasks
 func (c *TaskController) GetTasks(ctx *gin.Context) {
-	tasks := c.Service.GetAll()
+	tasks, err := c.Service.GetAll()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to fetch tasks",
+		})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{
 		"data": tasks,
 	})
@@ -28,20 +34,20 @@ func (c *TaskController) GetTasks(ctx *gin.Context) {
 
 // GET /tasks/:id
 func (c *TaskController) GetTaskByID(ctx *gin.Context) {
-	idParam := ctx.Param("id")
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid task ID",
-		})
-		return
-	}
+	// ID is now a string (MongoDB _id)
+	id := ctx.Param("id")
 
 	task, err := c.Service.GetByID(id)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{
-			"error": "task not found",
-		})
+		if err == data.ErrNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"error": "task not found",
+			})
+		} else {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"error": "failed to fetch task",
+			})
+		}
 		return
 	}
 
@@ -62,8 +68,14 @@ func (c *TaskController) CreateTask(ctx *gin.Context) {
 		return
 	}
 
+	created, err := c.Service.Create(input)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to create task",
+		})
+		return
+	}
 
-	created := c.Service.Create(input)
 	ctx.JSON(http.StatusCreated, gin.H{
 		"data": created,
 	})
@@ -71,14 +83,7 @@ func (c *TaskController) CreateTask(ctx *gin.Context) {
 
 // PUT /tasks/:id
 func (c *TaskController) UpdateTask(ctx *gin.Context) {
-	idParam := ctx.Param("id")
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid task ID",
-		})
-		return
-	}
+	id := ctx.Param("id")
 
 	var input models.Task
 	if err := ctx.ShouldBindJSON(&input); err != nil {
@@ -90,9 +95,15 @@ func (c *TaskController) UpdateTask(ctx *gin.Context) {
 
 	updated, err := c.Service.Update(id, input)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{
-			"error": "task not found",
-		})
+		if err == data.ErrNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"error": "task not found",
+			})
+		} else {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"error": "failed to update task",
+			})
+		}
 		return
 	}
 
@@ -103,21 +114,20 @@ func (c *TaskController) UpdateTask(ctx *gin.Context) {
 
 // DELETE /tasks/:id
 func (c *TaskController) DeleteTask(ctx *gin.Context) {
-	idParam := ctx.Param("id")
-	id, err := strconv.ParseInt(idParam, 10, 64)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid task ID",
-		})
-		return
-	}
+	id := ctx.Param("id")
 
 	if err := c.Service.Delete(id); err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{
-			"error": "task not found",
-		})
+		if err == data.ErrNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"error": "task not found",
+			})
+		} else {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"error": "failed to delete task",
+			})
+		}
 		return
 	}
 
-	ctx.JSON(http.StatusNoContent, gin.H{})
+	ctx.Status(http.StatusNoContent)
 }

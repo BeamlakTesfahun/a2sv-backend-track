@@ -1,4 +1,6 @@
 package main
+import "fmt"
+
 
 import (
 	"log"
@@ -9,10 +11,16 @@ import (
 )
 
 func main() {
-	// in memory storage
-	taskService := data.NewTaskService()
+	// Initialize MongoDB and get the tasks collection
+	collection, err := data.ConnectMongo()
 
-	// controller
+	fmt.Print(err)
+	if err != nil {
+		log.Fatal("failed to initialize MongoDB:", err)
+	}
+
+	// Initialize service and controller
+	taskService := data.NewTaskService(collection)
 	taskController := controllers.NewTaskController(taskService)
 
 	// router
@@ -20,6 +28,6 @@ func main() {
 
 	// run server
 	if err := r.Run(":8080"); err != nil {
-		log.Fatal("Failed to run server: ", err)
+		log.Fatal("failed to run server:", err)
 	}
 }

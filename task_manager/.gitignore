@@ -1,3 +1,8 @@
+#
+
+.env
+
+
 # Binaries
 task_manager
 *.exe
@@ -29,3 +34,6 @@ Thumbs.db
 *.swp
 *.swo
 *.tmp
+
+
+

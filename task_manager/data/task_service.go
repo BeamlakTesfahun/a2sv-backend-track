@@ -1,84 +1,122 @@
 package data
 
 import (
+	"context"
 	"errors"
-	"sync"
+	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"task_manager/models"
 )
 
+var (
+	// ErrNotFound is returned when a task does not exist.
+	ErrNotFound = errors.New("task not found")
+)
+
+// TaskService handles MongoDB-backed task operations.
 type TaskService struct {
-	mu     sync.RWMutex
-	tasks  map[int64]models.Task
-	nextID int64
+	collection *mongo.Collection
 }
 
-// creates a new in memory task serrvice
-func NewTaskService() *TaskService {
+// NewTaskService creates a new TaskService using the given MongoDB collection.
+func NewTaskService(collection *mongo.Collection) *TaskService {
 	return &TaskService{
-		tasks:  make(map[int64]models.Task),
-		nextID: 1,
+		collection: collection,
 	}
 }
 
-// returns all tasks
-func (s *TaskService) GetAll() []models.Task {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make([]models.Task, 0, len(s.tasks))
-	for _, t := range s.tasks {
-		result = append(result, t)
-	}
-	return result
+// contextWithTimeout creates a context with a reasonable timeout for DB ops.
+func contextWithTimeout() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 10*time.Second)
 }
 
-// returns a task by ID
-func (s *TaskService) GetByID(id int64) (models.Task, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// GetAll returns all tasks from MongoDB.
+func (s *TaskService) GetAll() ([]models.Task, error) {
+	ctx, cancel := contextWithTimeout()
+	defer cancel()
 
-	task, ok := s.tasks[id]
-	if !ok {
-		return models.Task{}, errors.New("task not found")
+	cursor, err := s.collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
 	}
+	defer cursor.Close(ctx)
+
+	var tasks []models.Task
+	if err := cursor.All(ctx, &tasks); err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
+}
+
+// GetByID returns a task by ID.
+func (s *TaskService) GetByID(id string) (models.Task, error) {
+	ctx, cancel := contextWithTimeout()
+	defer cancel()
+
+	var task models.Task
+	err := s.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&task)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return models.Task{}, ErrNotFound
+	}
+	if err != nil {
+		return models.Task{}, err
+	}
+
 	return task, nil
 }
 
-// adds a new task and returns assigned id
-func (s *TaskService) Create(task models.Task) models.Task {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// Create inserts a new task into MongoDB and returns it.
+func (s *TaskService) Create(task models.Task) (models.Task, error) {
+	ctx, cancel := contextWithTimeout()
+	defer cancel()
 
-	task.ID = s.nextID
-	s.nextID++
-	s.tasks[task.ID] = task
-	return task
-}
-
-// updates an existing task
-func (s *TaskService) Update(id int64, updated models.Task) (models.Task, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, ok := s.tasks[id]
-	if !ok {
-		return models.Task{}, errors.New("task not found")
+	// If ID is empty, generate a new unique string ID.
+	if task.ID == "" {
+		task.ID = primitive.NewObjectID().Hex()
 	}
 
-	updated.ID = id // preserve ID
-	s.tasks[id] = updated
+	_, err := s.collection.InsertOne(ctx, task)
+	if err != nil {
+		return models.Task{}, err
+	}
+
+	return task, nil
+}
+
+// Update replaces an existing task document.
+func (s *TaskService) Update(id string, updated models.Task) (models.Task, error) {
+	ctx, cancel := contextWithTimeout()
+	defer cancel()
+
+	updated.ID = id // ensure ID matches path parameter
+
+	res, err := s.collection.ReplaceOne(ctx, bson.M{"_id": id}, updated)
+	if err != nil {
+		return models.Task{}, err
+	}
+	if res.MatchedCount == 0 {
+		return models.Task{}, ErrNotFound
+	}
+
 	return updated, nil
 }
 
-// removes a task by ID
-func (s *TaskService) Delete(id int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// Delete removes a task by ID.
+func (s *TaskService) Delete(id string) error {
+	ctx, cancel := contextWithTimeout()
+	defer cancel()
 
-	if _, ok := s.tasks[id]; !ok {
-		return errors.New("task not found")
+	res, err := s.collection.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return err
 	}
-	delete(s.tasks, id)
+	if res.DeletedCount == 0 {
+		return ErrNotFound
+	}
+
 	return nil
 }
