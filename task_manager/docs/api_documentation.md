@@ -1,11 +1,34 @@
-# Task Management API Documentation
+```md
+# Task Management API Documentation (JWT + Role-Based Access)
 
 Base URL: http://localhost:8080
 
-## Task Object Format
+AUTHENTICATION
 
+-   This API uses JWT (JSON Web Tokens).
+-   Steps:
+    1. POST /register
+    2. POST /login -> get access_token
+    3. Send header for protected endpoints:
+       Authorization: Bearer <access_token>
+
+ROLES & ACCESS RULES
+
+-   If the database is empty, the first registered user becomes admin
+-   Admins can promote other users to admin using POST /promote
+-   Only admins can create, update, and delete tasks
+-   Any authenticated user (admin or regular user) can get all tasks and get task by ID
+
+USER OBJECT FORMAT
 {
-"id": 1,
+"id": "6926e9266694724e5e274283",
+"username": "admin1",
+"role": "admin"
+}
+
+TASK OBJECT FORMAT
+{
+"id": "6926e9266694724e5e274283",
 "title": "Buy groceries",
 "description": "Milk, eggs, bread",
 "due_date": "2025-11-25",
@@ -14,14 +37,105 @@ Base URL: http://localhost:8080
 
 ---
 
-GET /tasks
+POST /register (Public)
+Description: Create a new user account (unique username). If the database has no users, the first registered user will be an admin.
+
+Request Body:
+{
+"username": "admin1",
+"password": "pass123"
+}
+
+Response 201 Created:
+{
+"data": {
+"id": "6926e9266694724e5e274283",
+"username": "admin1",
+"role": "admin"
+}
+}
+
+Response 400 Bad Request:
+{ "error": "invalid input: <details>" }
+
+Response 409 Conflict:
+{ "error": "username already exists" }
+
+---
+
+POST /login (Public)
+Description: Authenticate user and return a JWT access token.
+
+Request Body:
+{
+"username": "admin1",
+"password": "pass123"
+}
+
+Response 200 OK:
+{
+"data": {
+"access_token": "<jwt_token_here>",
+"user": {
+"id": "6926e9266694724e5e274283",
+"username": "admin1",
+"role": "admin"
+}
+}
+}
+
+Response 400 Bad Request:
+{ "error": "invalid input: <details>" }
+
+Response 401 Unauthorized:
+{ "error": "invalid username or password" }
+
+---
+
+POST /promote (Admin Only)
+Description: Promote an existing user to admin.
+
+Headers:
+Authorization: Bearer <access_token>
+
+Request Body:
+{
+"username": "user1"
+}
+
+Response 200 OK:
+{
+"data": {
+"username": "user1",
+"role": "admin"
+}
+}
+
+Response 400 Bad Request:
+{ "error": "invalid input: <details>" }
+
+Response 401 Unauthorized:
+{ "error": "missing Authorization header" }
+
+Response 403 Forbidden:
+{ "error": "admin access required" }
+
+Response 404 Not Found:
+{ "error": "user not found" }
+
+---
+
+GET /tasks (Authenticated Users)
 Description: Get all tasks.
+
+Headers:
+Authorization: Bearer <access_token>
 
 Response 200 OK:
 {
 "data": [
 {
-"id": 1,
+"id": "6926e9266694724e5e274283",
 "title": "Buy groceries",
 "description": "Milk, eggs, bread",
 "due_date": "2025-11-25",
@@ -30,17 +144,23 @@ Response 200 OK:
 ]
 }
 
+Response 401 Unauthorized:
+{ "error": "missing Authorization header" }
+
 ---
 
-GET /tasks/:id
+GET /tasks/:id (Authenticated Users)
 Description: Get a specific task by ID.
 
-Example: GET /tasks/1
+Headers:
+Authorization: Bearer <access_token>
+
+Example: GET /tasks/6926e9266694724e5e274283
 
 Response 200 OK:
 {
 "data": {
-"id": 1,
+"id": "6926e9266694724e5e274283",
 "title": "Buy groceries",
 "description": "Milk, eggs, bread",
 "due_date": "2025-11-25",
@@ -48,16 +168,19 @@ Response 200 OK:
 }
 }
 
-Response 400 Bad Request:
-{ "error": "invalid task ID" }
+Response 401 Unauthorized:
+{ "error": "missing Authorization header" }
 
 Response 404 Not Found:
 { "error": "task not found" }
 
 ---
 
-POST /tasks
+POST /tasks (Admin Only)
 Description: Create a new task.
+
+Headers:
+Authorization: Bearer <access_token>
 
 Request Body:
 {
@@ -70,7 +193,7 @@ Request Body:
 Response 201 Created:
 {
 "data": {
-"id": 1,
+"id": "6926e9266694724e5e274283",
 "title": "Buy groceries",
 "description": "Milk, eggs, bread",
 "due_date": "2025-11-25",
@@ -81,12 +204,21 @@ Response 201 Created:
 Response 400 Bad Request:
 { "error": "invalid input: <details>" }
 
+Response 401 Unauthorized:
+{ "error": "missing Authorization header" }
+
+Response 403 Forbidden:
+{ "error": "admin access required" }
+
 ---
 
-PUT /tasks/:id
-Description: Update an existing task.
+PUT /tasks/:id (Admin Only)
+Description: Update an existing task by ID.
 
-Example: PUT /tasks/1
+Headers:
+Authorization: Bearer <access_token>
+
+Example: PUT /tasks/6926e9266694724e5e274283
 
 Request Body:
 {
@@ -99,7 +231,7 @@ Request Body:
 Response 200 OK:
 {
 "data": {
-"id": 1,
+"id": "6926e9266694724e5e274283",
 "title": "Buy groceries and snacks",
 "description": "Milk, eggs, bread, chips",
 "due_date": "2025-11-26",
@@ -108,35 +240,56 @@ Response 200 OK:
 }
 
 Response 400 Bad Request:
-{ "error": "invalid task ID" }
-
-Response 400 Bad Request:
 { "error": "invalid input: <details>" }
+
+Response 401 Unauthorized:
+{ "error": "missing Authorization header" }
+
+Response 403 Forbidden:
+{ "error": "admin access required" }
 
 Response 404 Not Found:
 { "error": "task not found" }
 
 ---
 
-DELETE /tasks/:id
+DELETE /tasks/:id (Admin Only)
 Description: Delete a task by ID.
 
-Example: DELETE /tasks/1
+Headers:
+Authorization: Bearer <access_token>
+
+Example: DELETE /tasks/6926e9266694724e5e274283
 
 Response 204 No Content:
 (no response body)
 
-Response 400 Bad Request:
-{ "error": "invalid task ID" }
+Response 401 Unauthorized:
+{ "error": "missing Authorization header" }
+
+Response 403 Forbidden:
+{ "error": "admin access required" }
 
 Response 404 Not Found:
 { "error": "task not found" }
 
 ---
 
-Summary:
-GET /tasks - Get all tasks
-GET /tasks/:id - Get a specific task
-POST /tasks - Create a new task
-PUT /tasks/:id - Update an existing task
-DELETE /tasks/:id - Delete a task
+SUMMARY
+Public:
+
+-   POST /register
+-   POST /login
+
+Authenticated (JWT required):
+
+-   GET /tasks
+-   GET /tasks/:id
+
+Admin only (JWT + role=admin):
+
+-   POST /tasks
+-   PUT /tasks/:id
+-   DELETE /tasks/:id
+-   POST /promote
+```

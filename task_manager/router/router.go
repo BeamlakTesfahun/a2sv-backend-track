@@ -3,19 +3,30 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 	"task_manager/controllers"
+	"task_manager/middleware"
 )
 
-func SetupRouter(taskController *controllers.TaskController) *gin.Engine {
+func SetupRouter(userController *controllers.UserController, taskController *controllers.TaskController) *gin.Engine {
 	r := gin.Default()
 
-	// grouped routes
-	taskRoutes := r.Group("/tasks")
+	// Public
+	r.POST("/register", userController.Register)
+	r.POST("/login", userController.Login)
+
+	// Authenticated
+	auth := r.Group("/")
+	auth.Use(middleware.AuthRequired())
 	{
-		taskRoutes.GET("", taskController.GetTasks)
-		taskRoutes.GET("/:id", taskController.GetTaskByID)
-		taskRoutes.POST("", taskController.CreateTask)
-		taskRoutes.PUT("/:id", taskController.UpdateTask)
-		taskRoutes.DELETE("/:id", taskController.DeleteTask)
+		// Any authenticated user can read tasks
+		auth.GET("/tasks", taskController.GetTasks)
+		auth.GET("/tasks/:id", taskController.GetTaskByID)
+
+		// Admin-only actions
+		auth.POST("/promote", middleware.AdminOnly(), userController.Promote)
+
+		auth.POST("/tasks", middleware.AdminOnly(), taskController.CreateTask)
+		auth.PUT("/tasks/:id", middleware.AdminOnly(), taskController.UpdateTask)
+		auth.DELETE("/tasks/:id", middleware.AdminOnly(), taskController.DeleteTask)
 	}
 
 	return r
