@@ -1,7 +1,48 @@
-```md
-# Task Management API Documentation (JWT + Role-Based Access)
+# Task Management API Documentation (JWT + Role-Based Access + Clean Architecture)
 
 Base URL: http://localhost:8080
+
+CLEAN ARCHITECTURE NOTE
+This project is refactored using Clean Architecture (Domain, Usecases, Repositories, Infrastructure, Delivery). The API endpoints and behavior remain the same.
+
+Project Structure:
+task_manager/
+├── Delivery/
+│ ├── main.go
+│ ├── controllers/
+│ │ └── controller.go
+│ └── routers/
+│ └── router.go
+├── Domain/
+│ └── domain.go
+├── Infrastructure/
+│ ├── auth_middleWare.go
+│ ├── jwt_service.go
+│ └── password_service.go
+├── Repositories/
+│ ├── task_repository.go
+│ └── user_repository.go
+└── Usecases/
+├── task_usecases.go
+└── user_usecases.go
+
+ENVIRONMENT VARIABLES (Recommended)
+Create a .env file in the project root:
+
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB=task_manager_db
+JWT_SECRET=super_strong_secret_key
+
+MongoDB Collections:
+
+-   users
+-   tasks
+
+RUNNING THE SERVER
+From the project root:
+
+1. go mod tidy
+2. go run ./Delivery/main.go
 
 AUTHENTICATION
 
@@ -275,6 +316,22 @@ Response 404 Not Found:
 
 ---
 
+CURL QUICK TESTS
+
+Register:
+curl -i -X POST http://localhost:8080/register -H "Content-Type: application/json" -d '{"username":"admin1","password":"pass123"}'
+
+Login:
+curl -i -X POST http://localhost:8080/login -H "Content-Type: application/json" -d '{"username":"admin1","password":"pass123"}'
+
+Get tasks (replace TOKEN):
+curl -i http://localhost:8080/tasks -H "Authorization: Bearer TOKEN"
+
+Create task (admin only, replace TOKEN):
+curl -i -X POST http://localhost:8080/tasks -H "Content-Type: application/json" -H "Authorization: Bearer TOKEN" -d '{"title":"Task A","description":"demo","due_date":"2025-12-20","status":"pending"}'
+
+---
+
 SUMMARY
 Public:
 
@@ -292,4 +349,7 @@ Admin only (JWT + role=admin):
 -   PUT /tasks/:id
 -   DELETE /tasks/:id
 -   POST /promote
+
+```
+
 ```
