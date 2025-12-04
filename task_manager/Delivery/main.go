@@ -10,9 +10,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"task_manager/controllers"
-	"task_manager/data"
-	"task_manager/router"
+	deliveryControllers "task_manager/Delivery/controllers"
+	"task_manager/Infrastructure"
+	"task_manager/Repositories"
+	"task_manager/Usecases"
+	"task_manager/Delivery/routers"
 )
 
 func getenv(key, fallback string) string {
@@ -23,51 +25,46 @@ func getenv(key, fallback string) string {
 }
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
-	}
+	_ = godotenv.Load()
 
-	// MongoDB config
 	mongoURI := getenv("MONGODB_URI", "mongodb://localhost:27017")
 	dbName := getenv("MONGODB_DB", "task_manager_db")
 
-	if os.Getenv("JWT_SECRET") == "" {
-		log.Println("WARNING: JWT_SECRET is not set. Middleware will use a default dev secret.")
-	}
-
-	// Connect to MongoDB
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
 	if err != nil {
-		log.Fatal("failed to connect to MongoDB:", err)
+		log.Fatal("mongo connect error:", err)
 	}
-
 	if err := client.Ping(ctx, nil); err != nil {
-		log.Fatal("failed to ping MongoDB:", err)
+		log.Fatal("mongo ping error:", err)
 	}
 
-	log.Println("Connected to MongoDB:", mongoURI)
-
-	// Collections
 	db := client.Database(dbName)
 	taskCol := db.Collection("tasks")
 	userCol := db.Collection("users")
 
-	// Services
-	taskSvc := data.NewTaskService(taskCol)
-	userSvc := data.NewUserService(userCol)
+	// Repositories
+	taskRepo := Repositories.NewMongoTaskRepository(taskCol)
+	userRepo := Repositories.NewMongoUserRepository(userCol)
+
+	// Infrastructure services
+	passSvc := Infrastructure.NewBcryptPasswordService()
+	jwtSvc := Infrastructure.NewJWTService()
+
+	// Usecases
+	taskUC := Usecases.NewTaskUsecases(taskRepo)
+	userUC := Usecases.NewUserUsecases(userRepo, passSvc, jwtSvc)
 
 	// Controllers
-	taskController := controllers.NewTaskController(taskSvc)
-	userController := controllers.NewUserController(userSvc)
+	ctrl := deliveryControllers.NewController(taskUC, userUC)
 
 	// Router
-	r := router.SetupRouter(userController, taskController)
+	r := routers.SetupRouter(ctrl, jwtSvc)
 
 	log.Println("Server running on :8080")
 	if err := r.Run(":8080"); err != nil {
-		log.Fatal("failed to run server:", err)
+		log.Fatal("server error:", err)
 	}
 }
